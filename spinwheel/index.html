@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spin the Wheel</title>
+<style>
+  :root { --card: #fffdf7; --ink: #2b2b40; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #ffe9f3 0%, #eaf4ff 55%, #f4f0ff 100%);
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: min(94vw, 460px);
+    background: var(--card);
+    border-radius: 26px;
+    padding: 24px 24px 28px;
+    box-shadow: 0 12px 34px rgba(80, 80, 140, 0.18);
+    text-align: center;
+  }
+  h1 { font-size: 22px; margin: 2px 0 18px; letter-spacing: .2px; }
+  .wheel-wrap { position: relative; margin: 0 auto; }
+  .pointer {
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0; z-index: 3;
+    border-left: 17px solid transparent; border-right: 17px solid transparent;
+    border-top: 28px solid #ff4d6d;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+  }
+  #wheel { border-radius: 50%; box-shadow: 0 0 0 9px #fff, 0 0 0 14px #ffd93d, 0 10px 28px rgba(0,0,0,.18); }
+  .hub {
+    position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
+    transform: translate(-50%, -50%); background: #fff; border-radius: 50%; z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; font-size: 26px;
+  }
+  button {
+    margin-top: 22px; border: 0; cursor: pointer; font: inherit; font-weight: 700; font-size: 18px; color: #fff;
+    padding: 14px 34px; border-radius: 999px; background: linear-gradient(135deg, #ff6fb5, #ff8f4d);
+    box-shadow: 0 6px 16px rgba(255, 110, 140, .4); transition: transform .08s ease, filter .2s ease;
+  }
+  button:hover { filter: brightness(1.05); }
+  button:active { transform: scale(.96); }
+  button:disabled { filter: grayscale(.4) brightness(.95); cursor: default; box-shadow: none; }
+  .result { margin-top: 18px; min-height: 30px; font-size: 20px; font-weight: 700; }
+  .result span { color: #ff4d6d; }
+  .note { margin-top: 10px; font-size: 12px; color: #9a9ab0; }
+  .note.warn { color: #e67700; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">Spin the Wheel</h1>
+    <div class="wheel-wrap" id="wrap">
+      <div class="pointer"></div>
+      <canvas id="wheel"></canvas>
+      <div class="hub">🎯</div>
+    </div>
+    <button id="spin">Spin</button>
+    <div class="result" id="result"></div>
+    <div class="note" id="note">Edit <code>options.json</code> to change the choices &amp; weights.</div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ─── CONFIG — tweak here. Labels/weights/title live in options.json ───
+  const CONFIG = {
+    wheelSize: 380,
+    spinSeconds: 5,
+    minTurns: 5,
+    colorMinDistance: 100,   // adjacent slices must differ by at least this (perceptual)
+    palette: ["#FF5252","#FFB300","#FFEB3B","#66BB6A","#26C6DA","#42A5F5",
+              "#5C6BC0","#AB47BC","#EC407A","#FF7043","#9CCC65","#26A69A"]
+  };
+  const DEFAULT = { title: "Spin the Wheel", options: { A:null,B:null,C:null,D:null,E:null,F:null } };
+
+  const canvas = document.getElementById("wheel");
+  const ctx = canvas.getContext("2d");
+  const spinBtn = document.getElementById("spin");
+  const resultEl = document.getElementById("result");
+  const titleEl = document.getElementById("title");
+  const noteEl = document.getElementById("note");
+  const wrap = document.getElementById("wrap");
+
+  const SIZE = CONFIG.wheelSize, R = SIZE / 2;
+  canvas.width = SIZE; canvas.height = SIZE;
+  canvas.style.width = SIZE + "px"; canvas.style.height = SIZE + "px";
+  wrap.style.width = SIZE + "px"; wrap.style.height = SIZE + "px";
+
+  let segments = [];   // [{label, color, startDeg, sizeDeg}]
+  let rotation = 0;
+  let spinning = false;
+
+  function secureRandom() {
+    const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] / 4294967296;
+  }
+
+  // ── parse options.json into [{label, weight|null}] (schema A: object map; also accepts arrays) ──
+  function parseOptions(raw) {
+    const out = [];
+    const clampW = v => (typeof v === "number" && isFinite(v)) ? Math.max(0, Math.min(100, v)) : null;
+    if (Array.isArray(raw)) {
+      raw.forEach(it => {
+        if (typeof it === "string") out.push({ label: it, weight: null });
+        else if (it && typeof it === "object") out.push({ label: String(it.label), weight: clampW(it.weight) });
+      });
+    } else if (raw && typeof raw === "object") {
+      Object.keys(raw).forEach(k => out.push({ label: k, weight: clampW(raw[k]) }));
+    }
+    return out;
+  }
+
+  // ── the weighting model ──
+  // equal share E = 100/N. A weight w keeps w% of E; freed space is pooled and
+  // split equally among the null options. No nulls → normalize weighted slices to fill.
+  function computeShares(entries) {
+    const N = entries.length, E = 100 / N;
+    const nulls = [];
+    let freed = 0, over = false;
+    const pct = entries.map((e) => {
+      if (e.weight == null) { nulls.push(e); return null; }
+      const slice = (e.weight / 100) * E;
+      freed += E - slice;
+      return slice;
+    });
+    if (nulls.length) {
+      const add = freed / nulls.length;
+      entries.forEach((e, i) => { if (pct[i] == null) pct[i] = E + add; });
+    } else {
+      const sum = pct.reduce((a, b) => a + b, 0);
+      if (sum > 0) for (let i = 0; i < pct.length; i++) pct[i] = pct[i] / sum * 100;
+      else for (let i = 0; i < pct.length; i++) pct[i] = E;   // all zero → equal
+    }
+    return pct; // percentages, sum ~100
+  }
+
+  // ── colors: random, but each adjacent (incl wrap) differs perceptually ──
+  function hexToRgb(h){ h=h.replace("#",""); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+  function colorDist(a, b){ // redmean perceptual distance
+    const rm=(a[0]+b[0])/2, dr=a[0]-b[0], dg=a[1]-b[1], db=a[2]-b[2];
+    return Math.sqrt((2+rm/256)*dr*dr + 4*dg*dg + (2+(255-rm)/256)*db*db);
+  }
+  function assignColors(n) {
+    const pal = CONFIG.palette.map(h => ({ hex: h, rgb: hexToRgb(h) }));
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const neighbors = [];
+      if (i > 0) neighbors.push(out[i - 1]);
+      if (i === n - 1 && n > 1) neighbors.push(out[0]);     // wrap: last touches first
+      const scored = pal.map(c => ({
+        c, d: neighbors.length ? Math.min.apply(null, neighbors.map(nb => colorDist(c.rgb, nb.rgb))) : Infinity
+      }));
+      const ok = scored.filter(s => s.d >= CONFIG.colorMinDistance);
+      let pick;
+      if (ok.length) pick = ok[Math.floor(secureRandom() * ok.length)].c;   // random among distinct-enough
+      else { scored.sort((a, b) => b.d - a.d); pick = scored[0].c; }         // fallback: most distinct
+      out.push(pick);
+    }
+    return out.map(c => c.hex);
+  }
+
+  function build(entries, title) {
+    const pct = computeShares(entries);
+    const colors = assignColors(entries.length);
+    let cum = 0;
+    segments = entries.map((e, i) => {
+      const sizeDeg = pct[i] / 100 * 360;
+      const s = { label: e.label, color: colors[i], startDeg: cum, sizeDeg: sizeDeg };
+      cum += sizeDeg;
+      return s;
+    }).filter(s => s.sizeDeg > 0.0001);   // hide 0% slices
+    if (title) { titleEl.textContent = title; document.title = title; }
+    draw();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    segments.forEach(s => {
+      const start = -Math.PI / 2 + s.startDeg * Math.PI / 180;
+      const end = start + s.sizeDeg * Math.PI / 180;
+      ctx.beginPath(); ctx.moveTo(R, R); ctx.arc(R, R, R - 2, start, end); ctx.closePath();
+      ctx.fillStyle = s.color; ctx.fill();
+      ctx.save();
+      ctx.translate(R, R); ctx.rotate(start + (end - start) / 2);
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillStyle = "#2b2b40"; ctx.font = "700 15px ui-rounded, system-ui, sans-serif";
+      const label = String(s.label);
+      ctx.fillText(label.length > 16 ? label.slice(0, 15) + "…" : label, R - 20, 0);
+      ctx.restore();
+    });
+  }
+
+  // winner = whichever segment's angular range sits under the top pointer
+  function winnerLabel(rot) {
+    const a0 = ((-rot % 360) + 360) % 360;
+    for (const s of segments) {
+      if (a0 >= s.startDeg && a0 < s.startDeg + s.sizeDeg) return s.label;
+    }
+    return segments.length ? segments[segments.length - 1].label : "";
+  }
+
+  function spin() {
+    if (spinning || segments.length < 1) return;
+    spinning = true; spinBtn.disabled = true; resultEl.textContent = "";
+    rotation += 360 * CONFIG.minTurns + secureRandom() * 360;
+    canvas.style.transition = "transform " + CONFIG.spinSeconds + "s cubic-bezier(0.17,0.67,0.12,0.99)";
+    canvas.style.transform = "rotate(" + rotation + "deg)";
+  }
+  canvas.addEventListener("transitionend", function () {
+    spinning = false; spinBtn.disabled = false;
+    resultEl.innerHTML = "🎉 <span>" + escapeHtml(winnerLabel(rotation)) + "</span>";
+  });
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
+
+  spinBtn.addEventListener("click", spin);
+
+  fetch("options.json", { cache: "no-store" })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(cfg => {
+      const entries = parseOptions(cfg.options);
+      if (entries.length >= 2) build(entries, cfg.title);
+      else build(parseOptions(DEFAULT.options), DEFAULT.title);
+    })
+    .catch(() => build(parseOptions(DEFAULT.options), DEFAULT.title));
+})();
+</script>
+</body>
+</html>

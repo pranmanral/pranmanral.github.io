@@ -1,0 +1,13 @@
+{
+  "title": "What should I do?",
+  "options": {
+    "Sleep": 80,
+    "Dance": null,
+    "Walk": null,
+    "Read": null,
+    "Running": 70,
+    "Coding": 50,
+    "Coloring": 90,
+    "Cooking": null
+  }
+}
