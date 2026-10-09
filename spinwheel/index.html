@@ -72,8 +72,10 @@
   // ─── CONFIG — tweak here. Labels/weights/title live in options.json ───
   const CONFIG = {
     wheelSize: 380,
-    spinSeconds: 5,
-    minTurns: 5,
+    minTurns: 4,        // fewest full rotations per spin
+    maxTurns: 9,        // most full rotations  → pace varies randomly in between
+    minSeconds: 4,      // fastest spin
+    maxSeconds: 8,      // slowest spin         → duration varies randomly in between
     colorMinDistance: 100,   // adjacent slices must differ by at least this (perceptual)
     palette: ["#FF5252","#FFB300","#FFEB3B","#66BB6A","#26C6DA","#42A5F5",
               "#5C6BC0","#AB47BC","#EC407A","#FF7043","#9CCC65","#26A69A"]
@@ -208,8 +210,14 @@
   function spin() {
     if (spinning || segments.length < 1) return;
     spinning = true; spinBtn.disabled = true; resultEl.textContent = "";
-    rotation += 360 * CONFIG.minTurns + secureRandom() * 360;
-    canvas.style.transition = "transform " + CONFIG.spinSeconds + "s cubic-bezier(0.17,0.67,0.12,0.99)";
+    // randomize PACE (whole turns) and the final landing offset — both crypto-random,
+    // so each result is independent of where it stopped last time (no sequential stepping).
+    const turns = CONFIG.minTurns + Math.floor(secureRandom() * (CONFIG.maxTurns - CONFIG.minTurns + 1));
+    const offset = secureRandom() * 360;
+    rotation += turns * 360 + offset;
+    // randomize TIME (duration) too, so no two spins feel identical.
+    const dur = CONFIG.minSeconds + secureRandom() * (CONFIG.maxSeconds - CONFIG.minSeconds);
+    canvas.style.transition = "transform " + dur.toFixed(2) + "s cubic-bezier(0.17,0.67,0.12,0.99)";
     canvas.style.transform = "rotate(" + rotation + "deg)";
   }
   canvas.addEventListener("transitionend", function () {
