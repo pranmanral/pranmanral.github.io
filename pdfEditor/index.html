@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF Editor</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">PDF&nbsp;Editor</div>
+    <div class="meta" id="meta" hidden></div>
+    <div class="edits-pill" id="edits" hidden></div>
+    <button class="primary" id="save" hidden>Save PDF</button>
+    <button class="ghost" id="reset" hidden>Open another PDF</button>
+  </header>
+
+  <main>
+    <!-- upload view -->
+    <section class="uploader" id="uploader">
+      <label class="drop" id="drop" for="file">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <div class="drop-title">Drop a PDF here, or click to choose</div>
+        <div class="drop-sub">Everything stays in your browser — nothing is uploaded.</div>
+      </label>
+      <input id="file" type="file" accept="application/pdf,.pdf" hidden />
+      <p class="error" id="error" hidden></p>
+    </section>
+
+    <!-- document view -->
+    <section class="viewer" id="viewer" hidden></section>
+    <div class="loading" id="loading" hidden>Rendering…</div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
