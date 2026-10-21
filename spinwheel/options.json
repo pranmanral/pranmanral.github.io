@@ -1,14 +1,15 @@
 {
   "title": "What should I do?",
   "options": {
-    "Dance": null,
-    "Running": null,
-    "Yoga":null,
-    "Reading":null,
     "Swimming":null,
     "Coding":null,
-    "Sauna":50,
-    "Painting":null,
-    "Workout":null
+    "ArpitBiryani":null,
+    "CleanWardrobe":null,
+    "WashClothes":null,
+    "Yoga":null,
+    "Workout":null,
+    "Planting":null,
+    "FunRun":null,
+    "WaxingNails":null,
   }
 }
