@@ -1,10 +1,11 @@
 {
   "title": "What should I do?",
   "options": {
-    "Coding":null,
+    "3DSAProblem":null,
     "ArpitBiryani":null,
-    "CleanWardrobe":null,
-    "YogaWorkout":null,
-    "WaxingNails":null
+    "StrengthTraining":null,
+    "Running30mins":null,
+    "RunningPlaylist":null,
+    "ReadAFBook":null
   }
 }
